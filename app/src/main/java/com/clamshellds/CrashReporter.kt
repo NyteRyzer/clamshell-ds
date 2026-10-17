@@ -94,6 +94,11 @@ object CrashReporter {
         if (sb.isEmpty() && running != null) {
             sb.append(describeSession(context)).append("The app closed while the game was running (no further details from Android).\n")
         }
+        // Crashed while emulating: step down one speed-up so the next attempt can work.
+        if (running != null) {
+            val step = com.clamshellds.data.Settings(context).stepDownAfterCrash()
+            if (step != null) sb.insert(0, "Automatic fix applied: $step\n\n")
+        }
         clearEmulating(context)
 
         if (sb.isEmpty()) return null

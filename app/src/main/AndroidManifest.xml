@@ -45,9 +45,11 @@
             </intent-filter>
         </activity-alias>
 
+        <!-- Exported so frontends (ES-DE, Daijisho, ...) can launch a ROM directly:
+             extra "rom" = absolute path, or a file:// data URI. -->
         <activity
             android:name=".EmulatorActivity"
-            android:exported="false"
+            android:exported="true"
             android:launchMode="singleTask"
             android:theme="@style/Theme.Clamshell.Game"
             android:configChanges="orientation|screenSize|screenLayout|keyboard|keyboardHidden|navigation|uiMode|smallestScreenSize|density" />

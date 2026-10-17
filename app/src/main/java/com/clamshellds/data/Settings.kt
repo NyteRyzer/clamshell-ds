@@ -130,6 +130,18 @@ class Settings(context: Context) {
         )
     }
 
+    /**
+     * After a crash during emulation, turn off the riskiest remaining speed-up.
+     * Returns a description of what changed, or null if nothing was left to turn off.
+     */
+    fun stepDownAfterCrash(): String? = when {
+        fastMem && jit -> { fastMem = false; "turned off JIT fast memory" }
+        jit -> { jit = false; "turned off the JIT (games run slower but more safely)" }
+        threaded3D -> { threaded3D = false; "turned off threaded 3D rendering" }
+        consoleType == 1 -> { consoleType = 0; "switched from DSi mode to DS mode" }
+        else -> null
+    }
+
     /** Slowest but most compatible settings, offered after a crash. */
     fun enableSafeMode() {
         jit = false

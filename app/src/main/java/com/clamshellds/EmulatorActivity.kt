@@ -106,7 +106,11 @@ class EmulatorActivity : Activity() {
 
     private fun boot() {
         val firmware = intent.getBooleanExtra(EXTRA_FIRMWARE, false)
+        // Frontends (ES-DE, Daijisho, Beacon...) pass the ROM as an extra or as a file:// URI.
         val romPath = intent.getStringExtra(EXTRA_ROM)
+            ?: intent.data?.takeIf { it.scheme == "file" || it.scheme == null }?.path
+        if (intent.getBooleanExtra(EXTRA_SAFE, false)) { settings.jit = false; settings.fastMem = false }
+        if (intent.hasExtra(EXTRA_JIT)) intent.getBooleanExtra(EXTRA_JIT, true).let { settings.jit = it; settings.fastMem = it }
         val label = intent.getStringExtra(EXTRA_TITLE) ?: romPath?.let { File(it).name } ?: "System Menu"
         CrashReporter.markEmulating(this, "loading $label", settings.jit)
         // Big stack: console creation runs deep inside the emulator core.
@@ -423,5 +427,7 @@ class EmulatorActivity : Activity() {
         const val EXTRA_ROM = "rom"
         const val EXTRA_TITLE = "title"
         const val EXTRA_FIRMWARE = "firmware"
+        const val EXTRA_SAFE = "safe"
+        const val EXTRA_JIT = "jit"
     }
 }

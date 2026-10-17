@@ -80,9 +80,18 @@ class LauncherActivity : Activity() {
         input.reload()
         sfx.enabled = settings.menuSounds
         applyProfile()
-        attachScreens()
-        DualDisplay.registerBattery(this, batteryReceiver)
         showCrashReportIfAny()
+        try {
+            attachScreens()
+        } catch (t: Throwable) {
+            // Never crash-loop on display setup: show both screens on this display instead.
+            second = null
+            (topView.parent as? android.view.ViewGroup)?.removeView(topView)
+            (menuView.parent as? android.view.ViewGroup)?.removeView(menuView)
+            setContentView(ScreenPairLayout(this).apply { addView(topView); addView(menuView) })
+            state.statusMessage = "Second screen unavailable: ${t.javaClass.simpleName}"
+        }
+        DualDisplay.registerBattery(this, batteryReceiver)
         if (hasStorageAccess()) {
             Paths.ensure()
             rescan()
@@ -276,7 +285,12 @@ class LauncherActivity : Activity() {
                 if (Build.VERSION.SDK_INT >= 30) {
                     val i = Intent(AndroidSettings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:$packageName"))
                     runCatching { startActivity(i) }.onFailure {
-                        startActivity(Intent(AndroidSettings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
+                        runCatching { startActivity(Intent(AndroidSettings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)) }
+                            .onFailure { _ ->
+                                runCatching {
+                                    startActivity(Intent(AndroidSettings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
+                                }
+                            }
                     }
                 } else {
                     requestPermissions(arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE), 1)
