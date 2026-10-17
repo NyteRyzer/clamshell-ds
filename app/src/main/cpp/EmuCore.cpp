@@ -876,8 +876,13 @@ void EmuCore::OpenAudio()
     AAudioStreamBuilder_setFormat(builder, AAUDIO_FORMAT_PCM_I16);
     AAudioStreamBuilder_setPerformanceMode(builder, AAUDIO_PERFORMANCE_MODE_LOW_LATENCY);
     AAudioStreamBuilder_setSharingMode(builder, AAUDIO_SHARING_MODE_SHARED);
-    AAudioStreamBuilder_setUsage(builder, AAUDIO_USAGE_GAME);
-    AAudioStreamBuilder_setContentType(builder, AAUDIO_CONTENT_TYPE_SONIFICATION);
+#if defined(__ANDROID__)
+    if (__builtin_available(android 28, *))
+    {
+        AAudioStreamBuilder_setUsage(builder, AAUDIO_USAGE_GAME);
+        AAudioStreamBuilder_setContentType(builder, AAUDIO_CONTENT_TYPE_SONIFICATION);
+    }
+#endif
     AAudioStreamBuilder_setDataCallback(builder, &EmuCore::AudioCallback, this);
     AAudioStreamBuilder_setErrorCallback(builder, &EmuCore::AudioErrorCallback, this);
 
