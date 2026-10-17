@@ -125,6 +125,19 @@ class SettingsActivity : Activity() {
 
         rows += Row.Header("Performance")
         rows += Row.Item("JIT recompiler", { onOff(settings.jit) }) { settings.jit = !settings.jit; refresh() }
+        rows += Row.Item("JIT fast memory", { onOff(settings.fastMem) }) { settings.fastMem = !settings.fastMem; refresh() }
+        rows += Row.Item("Safe mode (most compatible)", { "Tap to apply" }) {
+            settings.enableSafeMode(); refresh()
+            dialog().setTitle("Safe mode").setMessage("JIT, fast memory and threaded 3D are now off, and DS mode is selected. " +
+                "Games will run slower but should start. Turn options back on one at a time to find what your device dislikes.")
+                .setPositiveButton("OK", null).show()
+        }
+        rows += Row.Item("Last crash report", { if (CrashReporter.reportFile().isFile) "View" else "None" }) {
+            val f = CrashReporter.reportFile()
+            dialog().setTitle("Last crash report")
+                .setMessage(if (f.isFile) f.readText().take(8000) else "No crash has been recorded.")
+                .setPositiveButton("OK", null).show()
+        }
         rows += Row.Item("Threaded 3D rendering", { onOff(settings.threaded3D) }) { settings.threaded3D = !settings.threaded3D; refresh() }
         rows += Row.Item("Audio sync", { onOff(settings.audioSync) }) { settings.audioSync = !settings.audioSync; refresh() }
         rows += Row.Item("Game sound", { onOff(settings.audioEnabled) }) { settings.audioEnabled = !settings.audioEnabled; refresh() }

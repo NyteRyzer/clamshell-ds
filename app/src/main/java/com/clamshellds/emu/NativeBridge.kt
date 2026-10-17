@@ -33,6 +33,7 @@ object NativeBridge {
     external fun configure(
         consoleType: Int,
         jit: Boolean,
+        fastMem: Boolean,
         threaded3D: Boolean,
         directBoot: Boolean,
         audioSync: Boolean,
@@ -63,6 +64,7 @@ object NativeBridge {
     external fun isRunning(): Boolean
     external fun getStopReason(): Int
     external fun getFps(): Int
+    external fun isJitActive(): Boolean
 
     /** slot: 0/1 output surface; screen: 0 = top, 1 = bottom. */
     external fun setSurface(slot: Int, surface: Surface?, screen: Int)

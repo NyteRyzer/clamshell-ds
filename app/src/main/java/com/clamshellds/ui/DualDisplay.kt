@@ -29,6 +29,15 @@ object DualDisplay {
         return dm.displays.firstOrNull { it.displayId != Display.DEFAULT_DISPLAY && it.isValid }
     }
 
+    /** Battery updates (a protected system broadcast; flagged for Android 13+ rules). */
+    fun registerBattery(context: Context, receiver: android.content.BroadcastReceiver) {
+        val filter = android.content.IntentFilter(android.content.Intent.ACTION_BATTERY_CHANGED)
+        runCatching {
+            if (Build.VERSION.SDK_INT >= 33) context.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
+            else context.registerReceiver(receiver, filter)
+        }
+    }
+
     /** Hide status/navigation bars for a true "console" look. */
     @Suppress("DEPRECATION")
     fun immersive(window: android.view.Window) {

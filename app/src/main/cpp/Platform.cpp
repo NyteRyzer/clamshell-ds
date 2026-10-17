@@ -215,28 +215,26 @@ void Log(LogLevel level, const char* fmt, ...)
 
 struct Thread
 {
-    std::thread t;
+    clamshell::BigThread t;
 };
 
 Thread* Thread_Create(std::function<void()> func)
 {
     auto* t = new Thread();
-    t->t = std::thread(std::move(func));
+    t->t.Start(std::move(func));
     return t;
 }
 
 void Thread_Free(Thread* thread)
 {
     if (!thread) return;
-    if (thread->t.joinable())
-        thread->t.detach();
+    thread->t.Detach();
     delete thread;
 }
 
 void Thread_Wait(Thread* thread)
 {
-    if (thread && thread->t.joinable())
-        thread->t.join();
+    if (thread) thread->t.Join();
 }
 
 struct Semaphore

@@ -19,6 +19,7 @@
 #include <vector>
 
 #include "types.h"
+#include "BigThread.h"
 
 namespace melonDS { class NDS; }
 
@@ -35,6 +36,7 @@ struct EmuConfig
 {
     int consoleType = 0;        // 0 = DS, 1 = DSi
     bool jit = true;
+    bool fastMem = true;        // JIT fast memory (SIGSEGV-based)
     bool threaded3D = true;
     bool directBoot = true;     // skip the console boot menu when launching a game
     bool audioSync = true;
@@ -79,6 +81,7 @@ public:
     bool IsRunning() const { return running.load(); }
     bool IsPaused() const { return paused.load(); }
     int StopReason() const { return stopReason.load(); }
+    bool JitActive() const { return jitActive.load(); }
     int Fps() const { return fps.load(); }
 
     void SetSurface(int slot, ANativeWindow* window, int screen);
@@ -124,12 +127,13 @@ private:
     melonDS::NDS* nds = nullptr;
     std::mutex ndsLock;
 
-    std::thread emuThread, renderThread;
+    BigThread emuThread, renderThread;
     std::atomic<bool> running {false};
     std::atomic<bool> paused {false};
     std::atomic<bool> quit {false};
     std::atomic<int> stopReason {-1};
     std::atomic<int> fps {0};
+    std::atomic<bool> jitActive {false};
 
     std::mutex cmdLock;
     std::condition_variable cmdCv;

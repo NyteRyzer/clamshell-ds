@@ -80,6 +80,7 @@ class Settings(context: Context) {
 
     // Performance
     var jit: Boolean get() = bool("jit", true); set(v) = put("jit", v)
+    var fastMem: Boolean get() = bool("fastMem", true); set(v) = put("fastMem", v)
     var threaded3D: Boolean get() = bool("threaded3D", true); set(v) = put("threaded3D", v)
     var audioSync: Boolean get() = bool("audioSync", true); set(v) = put("audioSync", v)
     var audioEnabled: Boolean get() = bool("audio", true); set(v) = put("audio", v)
@@ -112,6 +113,7 @@ class Settings(context: Context) {
         NativeBridge.configure(
             consoleType = consoleType,
             jit = jit,
+            fastMem = fastMem,
             threaded3D = threaded3D,
             directBoot = directBoot,
             audioSync = audioSync,
@@ -126,6 +128,15 @@ class Settings(context: Context) {
             useExternalDSBios = useExternalDSBios,
             biosDir = Paths.bios.absolutePath,
         )
+    }
+
+    /** Slowest but most compatible settings, offered after a crash. */
+    fun enableSafeMode() {
+        jit = false
+        fastMem = false
+        threaded3D = false
+        consoleType = 0
+        displayMode = 0
     }
 
     companion object {

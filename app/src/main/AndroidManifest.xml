@@ -10,6 +10,7 @@
     <uses-feature android:name="android.software.leanback" android:required="false" />
 
     <application
+        android:name=".ClamshellApp"
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
         android:label="Clamshell DS"

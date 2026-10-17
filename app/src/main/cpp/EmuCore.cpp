@@ -5,6 +5,7 @@
 
 #include "EmuCore.h"
 
+#include <sys/mman.h>
 #include <sys/resource.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -103,6 +104,19 @@ void EmuCore::SetScale(int s)
     frameCv.notify_all();
 }
 
+// Checks that the system lets us map memory as writable + executable,
+// which the ARM64 JIT needs. If not, we fall back to the interpreter
+// instead of crashing on the first compiled block.
+static bool JitMemoryUsable()
+{
+    static int cached = -1;
+    if (cached >= 0) return cached == 1;
+    void* p = mmap(nullptr, 4096, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    cached = (p != MAP_FAILED) ? 1 : 0;
+    if (p != MAP_FAILED) munmap(p, 4096);
+    return cached == 1;
+}
+
 // ---------------------------------------------------------------------------
 // Console creation
 // ---------------------------------------------------------------------------
@@ -185,15 +199,19 @@ bool EmuCore::CreateConsole(std::string& err)
     }
 
     std::optional<JITArgs> jit = std::nullopt;
+    jitActive = false;
 #ifdef JIT_ENABLED
-    if (config.jit)
+    if (config.jit && !JitMemoryUsable())
+        Log(LogLevel::Error, "Executable memory is not available; running without the JIT\n");
+    else if (config.jit)
     {
         JITArgs j;
         j.MaxBlockSize = (unsigned)std::clamp(config.jitBlockSize, 1, 32);
         j.LiteralOptimizations = true;
         j.BranchOptimizations = true;
-        j.FastMemory = true;
+        j.FastMemory = config.fastMem;
         jit = j;
+        jitActive = true;
     }
 #endif
 
@@ -382,8 +400,8 @@ void EmuCore::Start()
     }
 
     OpenAudio();
-    emuThread = std::thread(&EmuCore::EmuThreadMain, this);
-    renderThread = std::thread(&EmuCore::RenderThreadMain, this);
+    emuThread.Start([this] { EmuThreadMain(); });
+    renderThread.Start([this] { RenderThreadMain(); });
 }
 
 void EmuCore::Pause()
@@ -423,8 +441,8 @@ void EmuCore::Shutdown()
             std::lock_guard<std::mutex> lk(frameLock);
             frameCv.notify_all();
         }
-        if (emuThread.joinable()) emuThread.join();
-        if (renderThread.joinable()) renderThread.join();
+        emuThread.Join();
+        renderThread.Join();
         running = false;
     }
 
@@ -449,7 +467,7 @@ void EmuCore::Reset()
 
 void EmuCore::RunOnEmuThread(const std::function<void()>& fn)
 {
-    if (!running.load() || std::this_thread::get_id() == emuThread.get_id())
+    if (!running.load() || emuThread.IsCurrent())
     {
         fn();
         return;

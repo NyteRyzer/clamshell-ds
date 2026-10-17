@@ -38,7 +38,7 @@ JNIEXPORT void JNICALL JNI_FN(setBasePath)(JNIEnv* env, jobject, jstring path)
 }
 
 JNIEXPORT void JNICALL JNI_FN(configure)(JNIEnv* env, jobject,
-    jint consoleType, jboolean jit, jboolean threaded3D, jboolean directBoot,
+    jint consoleType, jboolean jit, jboolean fastMem, jboolean threaded3D, jboolean directBoot,
     jboolean audioSync, jboolean audioEnabled, jint volume, jint scale,
     jstring username, jint language, jint favoriteColor, jint birthMonth, jint birthDay,
     jboolean useExternalDSBios, jstring biosDir)
@@ -46,6 +46,7 @@ JNIEXPORT void JNICALL JNI_FN(configure)(JNIEnv* env, jobject,
     EmuConfig c;
     c.consoleType = consoleType;
     c.jit = jit;
+    c.fastMem = fastMem;
     c.threaded3D = threaded3D;
     c.directBoot = directBoot;
     c.audioSync = audioSync;
@@ -88,6 +89,7 @@ JNIEXPORT void JNICALL JNI_FN(reset)(JNIEnv*, jobject) { EmuCore::Get().Reset();
 
 JNIEXPORT jboolean JNICALL JNI_FN(isRunning)(JNIEnv*, jobject) { return EmuCore::Get().IsRunning(); }
 JNIEXPORT jint JNICALL JNI_FN(getStopReason)(JNIEnv*, jobject) { return EmuCore::Get().StopReason(); }
+JNIEXPORT jboolean JNICALL JNI_FN(isJitActive)(JNIEnv*, jobject) { return EmuCore::Get().JitActive(); }
 JNIEXPORT jint JNICALL JNI_FN(getFps)(JNIEnv*, jobject) { return EmuCore::Get().Fps(); }
 
 JNIEXPORT void JNICALL JNI_FN(setSurface)(JNIEnv* env, jobject, jint slot, jobject surface, jint screen)

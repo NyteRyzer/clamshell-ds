@@ -43,6 +43,17 @@ set(ENABLE_JIT_PROFILING OFF)
 
 add_subdirectory("${MELONDS_DIR}/src" melonds-core)
 
+if (ANDROID AND ENABLE_JIT)
+    # melonDS normally makes a static buffer inside its own library executable with
+    # mprotect(), without checking the result. Android can refuse that, which crashes
+    # on the first JIT-compiled block. Use the code path that maps fresh anonymous
+    # RWX memory per JIT slice instead (the one melonDS uses on Apple Silicon,
+    # minus the macOS-only MAP_JIT flag).
+    set_source_files_properties("${MELONDS_DIR}/src/ARMJIT_Global.cpp"
+        TARGET_DIRECTORY core
+        PROPERTIES COMPILE_DEFINITIONS "APPLE_AARCH64;MAP_JIT=0")
+endif()
+
 add_library(clamshellds SHARED
     Platform.cpp
     EmuCore.cpp

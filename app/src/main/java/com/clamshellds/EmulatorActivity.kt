@@ -6,7 +6,6 @@ import android.app.AlertDialog
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
 import android.graphics.Color
 import android.os.BatteryManager
 import android.os.Bundle
@@ -30,7 +29,6 @@ import com.clamshellds.ui.DualDisplay
 import com.clamshellds.ui.ScreenPairLayout
 import com.clamshellds.ui.SecondScreen
 import java.io.File
-import kotlin.concurrent.thread
 
 /** Runs a game (or the console's own menu) across one or two physical screens. */
 class EmulatorActivity : Activity() {
@@ -109,7 +107,10 @@ class EmulatorActivity : Activity() {
     private fun boot() {
         val firmware = intent.getBooleanExtra(EXTRA_FIRMWARE, false)
         val romPath = intent.getStringExtra(EXTRA_ROM)
-        thread(name = "boot") {
+        val label = intent.getStringExtra(EXTRA_TITLE) ?: romPath?.let { File(it).name } ?: "System Menu"
+        CrashReporter.markEmulating(this, "loading $label", settings.jit)
+        // Big stack: console creation runs deep inside the emulator core.
+        Thread(null, {
             val err = synchronized(NativeBridge.lock) {
                 settings.applyToCore()
                 if (firmware || romPath == null) {
@@ -125,10 +126,13 @@ class EmulatorActivity : Activity() {
             runOnUiThread {
                 if (isFinishing || isDestroyed) return@runOnUiThread
                 if (err != null) {
+                    CrashReporter.clearEmulating(this)
                     showError(err)
                 } else {
                     synchronized(NativeBridge.lock) { NativeBridge.start() }
                     started = true
+                    CrashReporter.markEmulating(this, label, settings.jit)
+                    if (settings.jit && !NativeBridge.isJitActive()) showOsd("JIT unavailable on this device – running in compatibility mode")
                     if (settings.autoResume && rom != null) {
                         val auto = Paths.stateFor(rom, 0)
                         if (auto.isFile && NativeBridge.loadState(auto.absolutePath)) showOsd("Resumed where you left off")
@@ -136,7 +140,7 @@ class EmulatorActivity : Activity() {
                     if (!resumed || menuOpen) NativeBridge.pause()
                 }
             }
-        }
+        }, "boot", 16L * 1024 * 1024).start()
     }
 
     /** Pick up an existing .sav that sits next to the ROM (e.g. from another emulator). */
@@ -378,8 +382,9 @@ class EmulatorActivity : Activity() {
         resumed = true
         DualDisplay.immersive(window)
         input.reload()
-        registerReceiver(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        DualDisplay.registerBattery(this, batteryReceiver)
         handler.post(ticker)
+        if (started) CrashReporter.markEmulating(this, intent.getStringExtra(EXTRA_TITLE) ?: rom?.name ?: "System Menu", settings.jit)
         if (started && !menuOpen) NativeBridge.resume()
     }
 
@@ -390,6 +395,7 @@ class EmulatorActivity : Activity() {
         handler.removeCallbacks(ticker)
         releaseAll()
         if (started) NativeBridge.pause()
+        if (started) CrashReporter.clearEmulating(this)
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
@@ -405,7 +411,9 @@ class EmulatorActivity : Activity() {
             NativeBridge.setSurface(1, null, 0)
             synchronized(NativeBridge.lock) { NativeBridge.shutdown() }
             started = false
+            CrashReporter.clearEmulating(this)
         }
+        CrashReporter.clearEmulating(this)
         second?.dismiss()
         second = null
         super.onDestroy()

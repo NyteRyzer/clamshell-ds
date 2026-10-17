@@ -6,7 +6,6 @@ import android.app.AlertDialog
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.BatteryManager
@@ -47,6 +46,7 @@ class LauncherActivity : Activity() {
     private var second: SecondScreen? = null
     private var scanning = false
     private var askedPermission = false
+    private var crashChecked = false
 
     private val batteryReceiver = object : BroadcastReceiver() {
         override fun onReceive(c: Context, i: Intent) {
@@ -81,7 +81,8 @@ class LauncherActivity : Activity() {
         sfx.enabled = settings.menuSounds
         applyProfile()
         attachScreens()
-        registerReceiver(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        DualDisplay.registerBattery(this, batteryReceiver)
+        showCrashReportIfAny()
         if (hasStorageAccess()) {
             Paths.ensure()
             rescan()
@@ -106,6 +107,33 @@ class LauncherActivity : Activity() {
         super.onDestroy()
     }
 
+    /** If the previous run crashed, explain it, save a report and offer safe mode. */
+    private fun showCrashReportIfAny() {
+        if (crashChecked) return
+        crashChecked = true
+        val report = CrashReporter.pendingReport(this) ?: return
+        val where = if (hasStorageAccess()) CrashReporter.reportFile().absolutePath else "the app's private folder"
+        AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Light_Dialog_Alert)
+            .setTitle("Clamshell DS closed unexpectedly")
+            .setMessage(
+                "Turning on Safe mode switches off the JIT and other speed-ups so games can start reliably. " +
+                    "You can turn them back on in Settings > Performance.\n\n" +
+                    "A report was saved to $where.\n\n" + report
+            )
+            .setPositiveButton("Turn on safe mode") { _, _ -> settings.enableSafeMode() }
+            .setNeutralButton("Share report") { _, _ ->
+                runCatching {
+                    startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
+                        type = "text/plain"
+                        putExtra(Intent.EXTRA_SUBJECT, "Clamshell DS crash report")
+                        putExtra(Intent.EXTRA_TEXT, report)
+                    }, "Share crash report"))
+                }
+            }
+            .setNegativeButton("Close", null)
+            .show()
+    }
+
     private fun applyProfile() {
         state.username = settings.username
         state.accent = DsiTheme.accent(settings.favoriteColor)
@@ -124,22 +152,18 @@ class LauncherActivity : Activity() {
             val mainView: View = if (settings.swapDisplays) menuView else topView
             val otherView: View = if (settings.swapDisplays) topView else menuView
             setContentView(mainView)
-            second = SecondScreen(this, display, otherView).also {
-                runCatching { it.show() }.onFailure { _ ->
-                    // Could not use the second display: fall back to one screen.
-                    second = null
-                    (otherView.parent as? android.view.ViewGroup)?.removeView(otherView)
-                    (mainView.parent as? android.view.ViewGroup)?.removeView(mainView)
-                    setContentView(ScreenPairLayout(this, settings.singleLayout).apply {
-                        addView(topView); addView(menuView)
-                    })
-                }
+            val shown = runCatching {
+                SecondScreen(this, display, otherView).also { it.show() }
             }
-        } else {
-            setContentView(ScreenPairLayout(this, settings.singleLayout).apply {
-                addView(topView); addView(menuView)
-            })
+            second = shown.getOrNull()
+            if (second != null) return
+            // Could not use the second display: fall back to both screens on this one.
+            (otherView.parent as? android.view.ViewGroup)?.removeView(otherView)
+            (mainView.parent as? android.view.ViewGroup)?.removeView(mainView)
         }
+        setContentView(ScreenPairLayout(this, settings.singleLayout).apply {
+            addView(topView); addView(menuView)
+        })
     }
 
     // --- Library ------------------------------------------------------------
