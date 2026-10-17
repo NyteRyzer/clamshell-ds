@@ -1,0 +1,64 @@
+name: Build APK
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build release APK
+        run: ./gradlew --no-daemon assembleRelease
+
+      - name: Rename APK
+        run: |
+          mkdir -p out
+          cp app/build/outputs/apk/release/app-release.apk out/ClamshellDS.apk
+          ls -la out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ClamshellDS-apk
+          path: out/ClamshellDS.apk
+
+      # Every push to a branch refreshes the "latest" pre-release, so the newest
+      # APK is always one tap away at .../releases/tag/latest
+      - name: Publish latest build
+        if: github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Clamshell DS (latest build)
+          prerelease: true
+          make_latest: true
+          target_commitish: ${{ github.sha }}
+          body: |
+            Latest automatic build from `${{ github.ref_name }}` (${{ github.sha }}).
+            Download **ClamshellDS.apk** below and open it on your handheld to install.
+          files: out/ClamshellDS.apk
+
+      - name: Publish tagged release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: out/ClamshellDS.apk

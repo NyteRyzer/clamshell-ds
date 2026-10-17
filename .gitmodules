@@ -1,0 +1,3 @@
+[submodule "external/melonDS"]
+	path = external/melonDS
+	url = https://github.com/melonDS-emu/melonDS
