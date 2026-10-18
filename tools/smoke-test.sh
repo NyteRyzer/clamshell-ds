@@ -18,6 +18,10 @@ echo "== Displays"; adb shell dumpsys display | grep -E "^  Display [0-9]|mDispl
 python3 tools/make_test_rom.py /tmp/test.nds
 adb shell mkdir -p /sdcard/ClamshellDS/roms
 adb push /tmp/test.nds $ROM
+# Games scattered in other folders, like a real SD card: all of them must be found.
+adb shell mkdir -p "/sdcard/My Games/DS" /sdcard/Roms/NDS/Favorites
+adb push /tmp/test.nds "/sdcard/My Games/DS/second.nds"
+adb push /tmp/test.nds /sdcard/Roms/NDS/Favorites/third.NDS
 
 step() {  # name, seconds, am-args...
   local name="$1" secs="$2"; shift 2
@@ -32,6 +36,10 @@ step() {  # name, seconds, am-args...
 }
 
 step "launcher" 10 -n $PKG/.LauncherActivity
+scan=$(adb logcat -d -s ClamshellDS:I | grep "Library scan" | tail -1)
+echo "$scan"
+if echo "$scan" | grep -q "Library scan: 3 games"; then echo "RESULT library: OK (all 3 games found)"
+else echo "RESULT library: FAILED (expected 3 games)"; fail=1; fi
 step "game (JIT off)" 15 -n $PKG/.EmulatorActivity --es rom $ROM --ez jit false
 adb shell am force-stop $PKG
 step "game (JIT on)" 15 -n $PKG/.EmulatorActivity --es rom $ROM --ez jit true

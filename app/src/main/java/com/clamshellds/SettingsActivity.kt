@@ -276,7 +276,8 @@ class SettingsActivity : Activity() {
         labels += "＋ Add a folder…"
         labels += "＋ Type a folder path…"
         labels += "• ${Paths.roms.absolutePath} (always)"
-        labels += "• Roms/NDS, ROMs/ds, … on every storage (auto)"
+        labels += "• Everything else on internal storage and SD cards (auto)"
+        labels += "ⓘ Where were my games found?"
         folders.forEach { labels += "✘ Remove $it" }
         dialog().setTitle("Game folders")
             .setItems(labels.toTypedArray()) { _, which ->
@@ -285,14 +286,29 @@ class SettingsActivity : Activity() {
                         startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT_TREE), REQ_FOLDER)
                     }.onFailure { typeFolder() }
                     which == 1 -> typeFolder()
-                    which >= 4 -> {
-                        folders.removeAt(which - 4)
+                    which == 4 -> showScanReport()
+                    which >= 5 -> {
+                        folders.removeAt(which - 5)
                         settings.romFolders = folders.toSet()
                         refresh()
                     }
                 }
             }
             .setNegativeButton("Done", null)
+            .show()
+    }
+
+    private fun showScanReport() {
+        val lib = com.clamshellds.data.RomLibrary(this, settings)
+        dialog().setTitle("Game search")
+            .setMessage(lib.lastReport())
+            .setPositiveButton("Search again") { _, _ ->
+                Thread {
+                    runCatching { lib.scan() }
+                    runOnUiThread { if (!isFinishing) showScanReport() }
+                }.start()
+            }
+            .setNegativeButton("Close", null)
             .show()
     }
 

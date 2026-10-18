@@ -208,11 +208,12 @@ class LauncherActivity : Activity() {
         state.invalidateAll()
         val lib = RomLibrary(this, settings)
         thread(name = "rom-scan") {
-            val roms = runCatching { lib.scan() }.getOrDefault(emptyList())
+            val roms = runCatching { lib.scan() }.getOrNull()
             runOnUiThread {
                 scanning = false
                 state.scanning = false
-                setItems(roms)
+                // If the scan itself failed, keep showing the games we already know about.
+                setItems(roms ?: state.items.mapNotNull { (it as? MenuItem.Game)?.rom })
             }
         }
     }

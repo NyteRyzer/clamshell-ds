@@ -98,76 +98,104 @@ object RomParser {
     }
 }
 
-/** Finds DS games automatically in the usual handheld ROM folders. */
+/**
+ * Finds DS games automatically. Folders picked in Settings and ClamshellDS/roms are always
+ * searched; then every storage volume (internal + SD cards) is walked, skipping photo/music/
+ * video and Android system folders, so games are found wherever they were copied.
+ */
 class RomLibrary(private val context: Context, private val settings: Settings) {
     private val cacheFile = File(context.filesDir, "library.cache")
 
-    /** Folders that are scanned, newest settings first. */
-    fun searchFolders(): List<File> {
+    /** Folders the user added plus the app's own ROM folder. */
+    fun explicitFolders(): List<File> {
         val dirs = LinkedHashSet<File>()
         dirs += Paths.roms
         settings.romFolders.forEach { dirs += File(it) }
-
-        val wantedTop = setOf("roms", "rom", "games", "emulation", "emulators", "nds", "ds", "nintendo ds")
-        val wantedSub = setOf("nds", "ds", "nintendo ds", "nintendods", "nintendo - nintendo ds")
-        for (root in storageRoots()) {
-            val children = root.listFiles() ?: continue
-            for (c in children) {
-                if (!c.isDirectory) continue
-                val n = c.name.lowercase()
-                if (n in wantedTop) {
-                    if (n == "nds" || n == "ds" || n == "nintendo ds") dirs += c
-                    c.listFiles()?.forEach { s ->
-                        if (s.isDirectory && s.name.lowercase() in wantedSub) dirs += s
-                    }
-                }
-            }
-            dirs += File(root, "Download")
-        }
         return dirs.filter { it.isDirectory }
     }
 
-    private fun storageRoots(): List<File> {
+    fun storageRoots(): List<File> {
         val roots = LinkedHashSet<File>()
         roots += android.os.Environment.getExternalStorageDirectory()
         val sm = context.getSystemService(StorageManager::class.java)
         if (Build.VERSION.SDK_INT >= 30) {
-            sm?.storageVolumes?.forEach { v -> v.directory?.let { roots += it } }
-        } else {
-            File("/storage").listFiles()?.forEach { f ->
-                if (f.isDirectory && f.name != "self" && f.name != "emulated" && f.canRead()) roots += f
-            }
+            runCatching { sm?.storageVolumes?.forEach { v -> v.directory?.let { roots += it } } }
         }
-        return roots.toList()
+        // Belt and braces: some handheld ROMs don't report SD cards as storage volumes.
+        File("/storage").listFiles()?.forEach { f ->
+            if (f.isDirectory && f.name != "self" && f.name != "emulated" && f.canRead()) roots += f
+        }
+        return roots.filter { it.isDirectory }
+    }
+
+    private class Walk(val cache: Map<String, RomInfo>) {
+        val found = LinkedHashMap<String, RomInfo>()
+        val visited = HashSet<String>()
+        val perFolder = LinkedHashMap<String, Int>()
+        var folders = 0
+        var errors = 0
     }
 
     /** Scans storage; banner data is cached so repeat scans are fast. */
     fun scan(): List<RomInfo> {
-        val cache = loadCache()
-        val found = LinkedHashMap<String, RomInfo>()
-        for (dir in searchFolders()) walk(dir, 0, found, cache)
-        val list = found.values.sortedBy { it.shortTitle.lowercase() }
+        val w = Walk(loadCache())
+        for (dir in explicitFolders()) walk(dir, 0, w)
+        for (root in storageRoots()) walk(root, 0, w)
+        val list = w.found.values.sortedBy { it.shortTitle.lowercase() }
         saveCache(list)
+        saveReport(w, list.size)
+        android.util.Log.i("ClamshellDS", "Library scan: ${list.size} games in ${w.folders} folders")
         return list
     }
 
-    private fun walk(dir: File, depth: Int, out: MutableMap<String, RomInfo>, cache: Map<String, RomInfo>) {
-        val files = dir.listFiles() ?: return
+    private fun walk(dir: File, depth: Int, w: Walk) {
+        if (depth > MAX_DEPTH || w.folders >= MAX_FOLDERS) return
+        val canonical = runCatching { dir.canonicalPath }.getOrElse { w.errors++; return }
+        if (!w.visited.add(canonical)) return // already seen (symlinks, duplicate roots)
+        w.folders++
+        val files = runCatching { dir.listFiles() }.getOrNull() ?: return
         for (f in files) {
-            if (f.name.startsWith(".")) continue
-            if (f.isDirectory) {
-                if (depth < 3 && f.name != "Android") walk(f, depth + 1, out, cache)
-                continue
+            try {
+                val name = f.name
+                if (name.startsWith(".")) continue
+                if (f.isDirectory) {
+                    if (name.lowercase() !in SKIP_DIRS) walk(f, depth + 1, w)
+                    continue
+                }
+                if (!RomParser.isRom(f)) continue
+                val key = f.canonicalPath
+                if (w.found.containsKey(key)) continue
+                val cached = w.cache[key]
+                val info = if (cached != null && cached.size == f.length() && cached.modified == f.lastModified()) cached
+                else RomParser.parse(f)
+                if (info != null) {
+                    w.found[key] = info
+                    val folder = f.parentFile?.absolutePath ?: "?"
+                    w.perFolder[folder] = (w.perFolder[folder] ?: 0) + 1
+                }
+            } catch (t: Throwable) {
+                w.errors++ // one unreadable file must never hide the rest of the library
             }
-            if (!RomParser.isRom(f)) continue
-            val key = f.canonicalPath
-            if (out.containsKey(key)) continue
-            val cached = cache[key]
-            val info = if (cached != null && cached.size == f.length() && cached.modified == f.lastModified()) cached
-            else RomParser.parse(f)
-            if (info != null) out[key] = info
         }
     }
+
+    private fun saveReport(w: Walk, total: Int) {
+        val sb = StringBuilder()
+        sb.append("Found $total game").append(if (total == 1) "" else "s")
+            .append(" after searching ${w.folders} folders.\n\n")
+        if (w.perFolder.isNotEmpty()) {
+            sb.append("Games found in:\n")
+            w.perFolder.forEach { (folder, n) -> sb.append("• ").append(folder).append("  ($n)\n") }
+            sb.append('\n')
+        }
+        sb.append("Storage searched:\n")
+        storageRoots().forEach { sb.append("• ").append(it.absolutePath).append('\n') }
+        if (w.errors > 0) sb.append("\n${w.errors} files or folders couldn't be read.\n")
+        settings.put("lastScanReport", sb.toString())
+    }
+
+    fun lastReport(): String = settings.prefs.getString("lastScanReport", null)
+        ?: "No scan has run yet. Open the home menu once with file access allowed."
 
     fun loadCache(): Map<String, RomInfo> = runCatching {
         DataInputStream(cacheFile.inputStream().buffered()).use { inp ->
@@ -212,5 +240,13 @@ class RomLibrary(private val context: Context, private val settings: Settings) {
 
     companion object {
         private const val CACHE_VERSION = 2
+        private const val MAX_DEPTH = 6
+        private const val MAX_FOLDERS = 50_000
+        /** Never contain DS games, and some are huge. Matched case-insensitively at any depth. */
+        private val SKIP_DIRS = setOf(
+            "android", "dcim", "pictures", "movies", "music", "podcasts", "ringtones", "alarms",
+            "notifications", "recordings", "audiobooks", "screenshots", "lost.dir", "\$recycle.bin",
+            "system volume information",
+        )
     }
 }
