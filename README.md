@@ -61,7 +61,6 @@ files* shows which files were found.
 |---|---|
 | A B X Y, D-pad / left stick, L1 R1, Start, Select | same DS buttons |
 | L2 | fast forward (hold) |
-| R2 | swap screens |
 | L3 / R3 | quick save / quick load |
 | Back / Home-menu key | pause menu (save states, reset, filter, quit) |
 | Touch on the bottom screen | DS touchscreen |
@@ -78,8 +77,10 @@ The RG DS has an RK3568 chip and two 640×480 screens. The defaults are already 
 - **JIT** on, **threaded 3D** on, **audio sync** on.
 - **Screen filter: Sharp (2x).** 640×480 is a 2.5× scale of the DS screen, so the image is scaled up
   2× with sharp pixels and then smoothed the rest of the way. Choose *Smooth* for the lowest CPU cost.
-- If the top and bottom screens come out the wrong way round, turn on *Settings → Swap physical
-  screens*.
+- The first time the menu opens on a two-screen device, tap whichever screen is physically on top.
+  The app remembers it. On the RG DS, Android's main display is the bottom panel, and the app
+  already accounts for that. You can change it later in *Settings → Swap physical screens*, or
+  with *Swap screens* in the in-game menu (also remembered).
 - **DS mode is faster than DSi mode.** Use DSi mode only for DSi-enhanced/DSiWare titles or the DSi
   Menu.
 - Heavy 3D games can run below full speed on this chip. Hold L2 to fast-forward through slow parts.

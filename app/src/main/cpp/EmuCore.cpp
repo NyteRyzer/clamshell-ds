@@ -5,6 +5,7 @@
 
 #include "EmuCore.h"
 
+#include <dlfcn.h>
 #include <sys/mman.h>
 #include <sys/resource.h>
 #include <sys/stat.h>
@@ -102,6 +103,39 @@ void EmuCore::SetScale(int s)
     std::lock_guard<std::mutex> lk(frameLock);
     frameSerial++;
     frameCv.notify_all();
+}
+
+// Android 13+ performance hints: tell the scheduler how long each frame may take so it
+// raises CPU clocks for the emulator thread instead of letting the governor idle down.
+// Looked up at runtime so the app still runs on Android 10-12.
+namespace
+{
+struct PerfHint
+{
+    using GetManager = void* (*)();
+    using CreateSession = void* (*)(void*, const int32_t*, size_t, int64_t);
+    using ReportFn = int (*)(void*, int64_t);
+    using Close = void (*)(void*);
+
+    void* session = nullptr;
+    ReportFn report = nullptr;
+    Close close = nullptr;
+
+    void Open(const std::vector<int32_t>& tids, int64_t targetNs)
+    {
+        void* lib = dlopen("libandroid.so", RTLD_NOW);
+        if (!lib) return;
+        auto getManager = (GetManager)dlsym(lib, "APerformanceHint_getManager");
+        auto create = (CreateSession)dlsym(lib, "APerformanceHint_createSession");
+        report = (ReportFn)dlsym(lib, "APerformanceHint_reportActualWorkDuration");
+        close = (Close)dlsym(lib, "APerformanceHint_closeSession");
+        if (!getManager || !create || !report || !close) return;
+        if (void* mgr = getManager())
+            session = create(mgr, tids.data(), tids.size(), targetNs);
+    }
+    void Submit(int64_t ns) { if (session) report(session, ns > 0 ? ns : 1); }
+    ~PerfHint() { if (session) close(session); }
+};
 }
 
 // Checks that the system lets us map memory as writable + executable,
@@ -513,8 +547,15 @@ void EmuCore::SetBattery(int percent, bool charging)
 void EmuCore::EmuThreadMain()
 {
     setpriority(PRIO_PROCESS, gettid(), -10);
+    emuTid = gettid();
 
     using clock = std::chrono::steady_clock;
+    PerfHint perfHint;
+    {
+        std::vector<int32_t> tids { (int32_t)gettid() };
+        if (int rt = renderTid.load()) tids.push_back(rt);
+        perfHint.Open(tids, (int64_t)(1e9 / kNdsFps));
+    }
     const auto frameDuration = std::chrono::duration_cast<clock::duration>(std::chrono::duration<double>(1.0 / kNdsFps));
     auto nextFrame = clock::now();
     auto fpsStart = clock::now();
@@ -579,6 +620,7 @@ void EmuCore::EmuThreadMain()
             }
         }
 
+        auto workStart = clock::now();
         nds->RunFrame();
 
         {
@@ -595,6 +637,7 @@ void EmuCore::EmuThreadMain()
         frameCv.notify_one();
 
         FlushSave(false);
+        perfHint.Submit(std::chrono::duration_cast<std::chrono::nanoseconds>(clock::now() - workStart).count());
 
         if (audioRestart.exchange(false))
         {
@@ -672,6 +715,7 @@ static inline u32 BgraToRgba(u32 c)
 void EmuCore::RenderThreadMain()
 {
     setpriority(PRIO_PROCESS, gettid(), -4);
+    renderTid = gettid();
 
     std::vector<u32> local[2];
     local[0].resize(256 * 192);

@@ -134,6 +134,7 @@ private:
     std::atomic<int> stopReason {-1};
     std::atomic<int> fps {0};
     std::atomic<bool> jitActive {false};
+    std::atomic<int> emuTid {0}, renderTid {0};
 
     std::mutex cmdLock;
     std::condition_variable cmdCv;

@@ -55,9 +55,36 @@ object Paths {
             .all { File(bios, it).isFile }
 }
 
+/** Known handheld quirks. */
+object Device {
+    private val id = (android.os.Build.MODEL + " " + android.os.Build.DEVICE + " " + android.os.Build.PRODUCT)
+        .lowercase().replace(" ", "").replace("-", "").replace("_", "")
+
+    val isRgDs: Boolean get() = "rgds" in id
+
+    /** True where Android's default display is the lower panel of the clamshell. */
+    val mainDisplayIsBottom: Boolean get() = isRgDs
+}
+
 /** All user settings, backed by SharedPreferences. */
 class Settings(context: Context) {
     val prefs: SharedPreferences = context.getSharedPreferences("clamshell", Context.MODE_PRIVATE)
+
+    init { migrate() }
+
+    /**
+     * One-off fixes for settings saved by older builds. v2: the launch crash in early builds
+     * made people turn on safe mode, which leaves games very slow. That crash wasn't caused
+     * by the JIT, so turn the speed-ups back on once.
+     */
+    private fun migrate() {
+        val v = prefs.getInt("settingsVersion", 0)
+        if (v < 2) {
+            prefs.edit()
+                .putBoolean("jit", true).putBoolean("fastMem", true).putBoolean("threaded3D", true)
+                .putInt("settingsVersion", 2).apply()
+        }
+    }
 
     private fun bool(key: String, def: Boolean) = prefs.getBoolean(key, def)
     private fun int(key: String, def: Int) = prefs.getInt(key, def)
@@ -88,7 +115,10 @@ class Settings(context: Context) {
 
     // Display
     var displayMode: Int get() = int("displayMode", 0); set(v) = put("displayMode", v)     // 0 auto, 1 dual, 2 single
-    var swapDisplays: Boolean get() = bool("swapDisplays", false); set(v) = put("swapDisplays", v)
+    // On the RG DS Android's main display is the BOTTOM panel, so swap by default there.
+    var swapDisplays: Boolean get() = bool("swapDisplays", Device.mainDisplayIsBottom); set(v) = put("swapDisplays", v)
+    /** Whether the user has confirmed which physical screen is on top. */
+    var topScreenConfirmed: Boolean get() = bool("topScreenConfirmed", false); set(v) = put("topScreenConfirmed", v)
     var singleLayout: Int get() = int("singleLayout", 0); set(v) = put("singleLayout", v)  // 0 auto, 1 stacked, 2 side
     var filter: Int get() = int("filter", 2); set(v) = put("filter", v)                    // prescale 1..4
     var showFps: Boolean get() = bool("showFps", false); set(v) = put("showFps", v)

@@ -125,11 +125,10 @@ class LauncherActivity : Activity() {
         AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Light_Dialog_Alert)
             .setTitle("Clamshell DS closed unexpectedly")
             .setMessage(
-                "Turning on Safe mode switches off the JIT and other speed-ups so games can start reliably. " +
-                    "You can turn them back on in Settings > Performance.\n\n" +
-                    "A report was saved to $where.\n\n" + report
+                "A report was saved to $where. If this keeps happening, Settings > Performance > " +
+                    "Safe mode makes games start more reliably (but run slower).\n\n" + report
             )
-            .setPositiveButton("Turn on safe mode") { _, _ -> settings.enableSafeMode() }
+            .setPositiveButton("OK", null)
             .setNeutralButton("Share report") { _, _ ->
                 runCatching {
                     startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
@@ -139,7 +138,6 @@ class LauncherActivity : Activity() {
                     }, "Share crash report"))
                 }
             }
-            .setNegativeButton("Close", null)
             .show()
     }
 
@@ -165,7 +163,10 @@ class LauncherActivity : Activity() {
                 SecondScreen(this, display, otherView).also { it.show() }
             }
             second = shown.getOrNull()
-            if (second != null) return
+            if (second != null) {
+                askWhichScreenIsOnTop(mainView)
+                return
+            }
             // Could not use the second display: fall back to both screens on this one.
             (otherView.parent as? android.view.ViewGroup)?.removeView(otherView)
             (mainView.parent as? android.view.ViewGroup)?.removeView(mainView)
@@ -173,6 +174,24 @@ class LauncherActivity : Activity() {
         setContentView(ScreenPairLayout(this, settings.singleLayout).apply {
             addView(topView); addView(menuView)
         })
+    }
+
+    /** First run on a dual-screen device: let the user tap the panel that is on top. */
+    private fun askWhichScreenIsOnTop(mainView: View) {
+        if (settings.topScreenConfirmed) { state.identifyScreens = false; return }
+        state.identifyScreens = true
+        state.onIdentify = { tapped ->
+            // Tapped view is physically on top. If that's the one on the main display,
+            // the main display is the top panel (no swap); otherwise swap.
+            val mainIsTop = tapped === mainView
+            settings.swapDisplays = !mainIsTop
+            settings.topScreenConfirmed = true
+            state.identifyScreens = false
+            sfx.select()
+            if (settings.swapDisplays != (mainView === menuView)) window.decorView.post { attachScreens() }
+            state.invalidateAll()
+        }
+        state.invalidateAll()
     }
 
     // --- Library ------------------------------------------------------------

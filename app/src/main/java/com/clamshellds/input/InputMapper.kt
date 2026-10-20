@@ -116,7 +116,6 @@ class InputMapper(private val settings: Settings) {
             KeyEvent.KEYCODE_BUTTON_START to Action.START,
             KeyEvent.KEYCODE_BUTTON_SELECT to Action.SELECT,
             KeyEvent.KEYCODE_BUTTON_L2 to Action.FAST_FORWARD,
-            KeyEvent.KEYCODE_BUTTON_R2 to Action.SWAP_SCREENS,
             KeyEvent.KEYCODE_BUTTON_THUMBL to Action.QUICK_SAVE,
             KeyEvent.KEYCODE_BUTTON_THUMBR to Action.QUICK_LOAD,
             KeyEvent.KEYCODE_BUTTON_MODE to Action.MENU,

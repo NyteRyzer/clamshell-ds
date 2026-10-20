@@ -110,8 +110,11 @@ class SettingsActivity : Activity() {
                 settings.displayMode = it
             }
         }
+        rows += Row.Item("Ask which screen is on top", { "Next time the menu opens" }) {
+            settings.topScreenConfirmed = false; refresh()
+        }
         rows += Row.Item("Swap physical screens", { onOff(settings.swapDisplays) }) {
-            settings.swapDisplays = !settings.swapDisplays; refresh()
+            settings.swapDisplays = !settings.swapDisplays; settings.topScreenConfirmed = true; refresh()
         }
         rows += Row.Item("One-screen layout", { listOf("Automatic", "Stacked", "Side by side")[settings.singleLayout] }) {
             choose("One-screen layout", listOf("Automatic", "Stacked (top above bottom)", "Side by side"), settings.singleLayout) {

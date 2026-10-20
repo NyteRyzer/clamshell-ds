@@ -44,7 +44,6 @@ class EmulatorActivity : Activity() {
     // (or below/beside slot 0 on single-screen devices).
     private val surfaces = arrayOfNulls<SurfaceView>(2)
     private val surfaceReady = BooleanArray(2)
-    private var swapped = false
     private lateinit var osd: TextView
     private lateinit var fpsView: TextView
 
@@ -136,7 +135,9 @@ class EmulatorActivity : Activity() {
                     synchronized(NativeBridge.lock) { NativeBridge.start() }
                     started = true
                     CrashReporter.markEmulating(this, label, settings.jit)
-                    if (settings.jit && !NativeBridge.isJitActive()) showOsd("JIT unavailable on this device – running in compatibility mode")
+                    if (!NativeBridge.isJitActive()) showOsd(
+                        if (settings.jit) "JIT unavailable on this device – running in slow compatibility mode"
+                        else "JIT is off, so games run slowly – turn it on in Settings > Performance")
                     if (settings.autoResume && rom != null) {
                         val auto = Paths.stateFor(rom, 0)
                         if (auto.isFile && NativeBridge.loadState(auto.absolutePath)) showOsd("Resumed where you left off")
@@ -167,7 +168,7 @@ class EmulatorActivity : Activity() {
 
     private fun screenForSlot(slot: Int): Int {
         // slot 0 shows the top screen unless the user swapped them
-        val bottomOnMain = settings.swapDisplays xor swapped
+        val bottomOnMain = settings.swapDisplays
         return if ((slot == 0) == bottomOnMain) 1 else 0
     }
 
@@ -221,12 +222,14 @@ class EmulatorActivity : Activity() {
     }
 
     private fun swapScreens() {
-        swapped = !swapped
+        // Remembered: on a clamshell this means "the top/bottom panels were the wrong way round".
+        settings.swapDisplays = !settings.swapDisplays
+        settings.topScreenConfirmed = true
         for (slot in 0..1) {
             val sv = surfaces[slot] ?: continue
             if (surfaceReady[slot]) NativeBridge.setSurface(slot, sv.holder.surface, screenForSlot(slot))
         }
-        showOsd("Screens swapped")
+        showOsd("Screens swapped (remembered)")
     }
 
     private fun onScreenTouch(slot: Int, v: View, e: MotionEvent): Boolean {

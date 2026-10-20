@@ -41,6 +41,9 @@ class MenuState {
     var charging = false
     var scanning = false
     var statusMessage: String? = null
+    /** First-run "which panel is on top?" prompt on dual-screen devices. */
+    var identifyScreens = false
+    var onIdentify: ((View) -> Unit)? = null
     val listeners = ArrayList<View>()
 
     val current: MenuItem get() = items.getOrElse(selected) { MenuItem.Empty }
@@ -91,6 +94,25 @@ abstract class DsCanvasView(context: Context, protected val state: MenuState) : 
         var end = s.length
         while (end > 1 && paint.measureText(s.substring(0, end) + "…") > u(maxWidth)) end--
         return s.substring(0, end) + "…"
+    }
+
+    /** Overlay asking the user to tap the panel that is physically on top. */
+    protected fun drawIdentifyOverlay(c: Canvas) {
+        if (!state.identifyScreens) return
+        paint.shader = null
+        paint.style = Paint.Style.FILL
+        paint.color = 0xE0202028.toInt()
+        c.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paint)
+        text(c, "Is this the TOP screen?", 128f, 84f, 16f, Color.WHITE, bold = true)
+        text(c, "Tap this screen if it is the upper one", 128f, 108f, 10f, Color.WHITE)
+        text(c, "(you can change it later in Settings)", 128f, 126f, 8f, DsiTheme.TEXT_LIGHT)
+    }
+
+    /** Returns true if the touch was used to answer the top-screen question. */
+    protected fun handleIdentifyTouch(e: MotionEvent): Boolean {
+        if (!state.identifyScreens) return false
+        if (e.actionMasked == MotionEvent.ACTION_UP) state.onIdentify?.invoke(this)
+        return true
     }
 
     protected fun drawIcon(c: Canvas, item: MenuItem, l: Float, t: Float, size: Float) {
@@ -222,7 +244,11 @@ class DsiTopView(context: Context, state: MenuState) : DsCanvasView(context, sta
 
         text(c, hint, 128f, 168f, 9f, DsiTheme.TEXT_LIGHT)
         state.statusMessage?.let { text(c, it, 128f, 184f, 8f, DsiTheme.darken(state.accent, 0.2f)) }
+        drawIdentifyOverlay(c)
     }
+
+    @SuppressLint("ClickableViewAccessibility")
+    override fun onTouchEvent(e: MotionEvent): Boolean = handleIdentifyTouch(e)
 
     private fun drawBattery(c: Canvas, l: Float, t: Float) {
         paint.style = Paint.Style.STROKE
@@ -382,12 +408,14 @@ class DsiMenuView(
         c.drawRoundRect(rect(hx - 8f, 168f, hx + 8f, 180f), u(3f), u(3f), paint)
         paint.style = Paint.Style.FILL
 
+        drawIdentifyOverlay(c)
         // pulse needs continuous frames; cheap at this size
         postInvalidateOnAnimation()
     }
 
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(e: MotionEvent): Boolean {
+        if (handleIdentifyTouch(e)) return true
         val vx = (e.x - ox) / unit
         val vy = (e.y - oy) / unit
         when (e.actionMasked) {
